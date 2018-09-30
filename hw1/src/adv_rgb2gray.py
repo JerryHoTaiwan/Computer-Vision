@@ -13,8 +13,9 @@ parser.add_argument('--source_path', default='../testdata')
 parser.add_argument('--target_path', default='../result')
 parser.add_argument('--img_name', default='0a.png')
 parser.add_argument('--check_ans', default=1, type=int)
+parser.add_argument('--already_done', default=0, type=int)
 
-def joint_bilateral_filter(jnt_img, src_img, sigma_color=0.05, sigma_space=1):
+def joint_bilateral_filter(jnt_img, src_img, sigma_color=0.05, sigma_space=1, r_factor=1.5):
 
     start = time.time()
     # (390, 390, 3)
@@ -23,7 +24,7 @@ def joint_bilateral_filter(jnt_img, src_img, sigma_color=0.05, sigma_space=1):
 
     h = src_img.shape[0]
     w = src_img.shape[1]
-    radius = 3 * sigma_space
+    radius = np.round(r_factor * sigma_space).astype(np.uint8)
 
     tar_img = np.zeros((h, w, 3)).astype(np.float32)
 
@@ -73,8 +74,8 @@ def joint_bilateral_filter(jnt_img, src_img, sigma_color=0.05, sigma_space=1):
 
 def get_candidates():
     candidates = list()
-    for i in range(0, 10):
-        for j in range(0, 10-i):
+    for i in range(0, 11):
+        for j in range(0, 11-i):
             choice = (i, j, 10-i-j)
             candidates.append(choice)
     candidates = np.array(candidates).astype(np.float32) / 10.
@@ -120,48 +121,53 @@ if __name__ == '__main__':
 
     candidates = get_candidates()
     diff = np.zeros((68, 9)).astype(np.float32)
-    np.save(join(args.target_path, 'diff.npy'), diff)
     para_index = 0
 
     sigma_color = [0.05, 0.1, 0.2]
     sigma_space = [1, 2, 3]
 
-    for sc in sigma_color:
-        for ss in sigma_space:
-            cand_index = 0
-            for weight in candidates:
-                print (weight)
-                can_img = weight_rgb2gray(src_img, weight)
-                res_img = joint_bilateral_filter(jnt_img=can_img, src_img=src_img, sigma_color=sc, sigma_space=ss)
-                diff[cand_index, para_index] = (np.sum(np.abs(src_img - res_img)))
-                cand_index += 1
-                figname = join(args.target_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
-                cv2.imwrite(figname, res_img)
+    if args.already_done == 0:
+        print (args.already_done)
+        for sc in sigma_color:
+            for ss in sigma_space:
+                cand_index = 0
+                for weight in candidates:
+                    print (weight)
+                    can_img = weight_rgb2gray(src_img, weight)
+                    res_img = joint_bilateral_filter(jnt_img=can_img, src_img=src_img, sigma_color=0.2, sigma_space=ss)
+                    diff[cand_index, para_index] = (np.sum(np.abs(src_img - res_img)))
+                    print (np.sum(np.abs(src_img - res_img)))
+                    cand_index += 1
+                    figname = join(args.target_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
+                    cv2.imwrite(figname, res_img)
 
-                #res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=7, sigmaColor=0.1, sigmaSpace=3)
-                #cv2.imwrite(first_img_path, res_img)
-            para_index += 1
+                    #res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=7, sigmaColor=0.1, sigmaSpace=3)
+                    #cv2.imwrite(first_img_path, res_img)
+                para_index += 1
 
-    np.save(join(args.target_path, 'diff.npy'), diff)
-    diff[0, :]  = 100
-    diff[-1, :] = 100 # consider boundary condition
+        np.save(join(args.target_path, 'diff.npy'), diff)
+
+    else:
+        diff = np.load(join(args.target_path, 'diff.npy'))
+    diff[0, :]  = 1e9
+    diff[-1, :] = 1e9 # consider boundary condition
 
     # plot and score
     para_index = 0
-    score = np.zeros(66, 9)
+    score = np.zeros((66, 9))
     for sc in sigma_color:
         for ss in sigma_space:
             y = diff[1:-1, para_index]
             x = np.arange(1, 67)
-            plt.plot(y, x)
+            plt.plot(x, y)
             figname = join(args.target_path, 'diff_sc_' + str(sc) + '_ss_' + str(ss) + '.png')
             plt.savefig(figname)
             plt.close()
 
-            score[:, para_index] = local_score(diff[para_index])
+            score[:, para_index] = local_score(diff[:, para_index])
             para_index += 1
 
     score = np.sum(score, axis=1)
-    plt.plot(score, x)
+    plt.plot(x, score)
     plt.savefig(join(args.target_path, 'score.png'))
     plt.close()
