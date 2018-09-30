@@ -1,7 +1,12 @@
 import numpy as np
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
+
 import cv2
 import argparse
 from os import listdir, makedirs
@@ -92,18 +97,56 @@ def weight_rgb2gray(src_img, weights):
     tar_img = np.repeat(tar_img, 3, axis=2)
     return tar_img
 
-def local_score(diff):
-    score = np.zeros(len(diff) - 2)
-    for i in range(1, len(diff) - 1):
-        if diff[i] < diff[i-1] and diff[i] < diff[i+1]:
-            score[i-1] = 1
+def local_score(cand, diff):
+    score = np.zeros(len(diff))
+    for i, choice in enumerate(cand):
+        local_min = 1
+        for j, neibor in enumerate(cand):
+            # the minimum distance is sqrt(2)
+            print (choice, neibor)
+            print (np.sum(np.abs(neibor - choice)))
+            if np.sum(np.abs(neibor - choice)) < 0.21 and np.sum(np.abs(neibor - choice)) > 0:
+                if diff[j] > diff[i]:
+                    local_min *= 1
+                else:
+                    local_min *= 0
+        score[i] += local_min
     return score
+
+def plot_4dsurface(candidates, diff, tar_img_path):
+
+    scat_path = join(tar_img_path, 'surface')
+    if not exists(scat_path):
+        makedirs(scat_path)
+    for para_index in range(9):
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
+        c = diff[:, para_index]
+        x = candidates[:, 0]
+        y = candidates[:, 1]
+        z = candidates[:, 2]
+        scat = ax.scatter(x, y, z, c=c, cmap=cm.coolwarm, linewidth=0, antialiased=False)
+        # Add a color bar which maps values to colors.
+        fig.colorbar(scat, shrink=0.5, aspect=5)
+        plt.savefig(join(scat_path, 'sf_' + str(para_index) + '.png'))
+        plt.close()
 
 if __name__ == '__main__':
     args = parser.parse_args()
 
+    tar_img_path = join(args.target_path, args.img_name[:-4])
+    tar_img_res_path = join(tar_img_path, 'res')
+    tar_img_can_path = join(tar_img_path, 'can')
+
     if not exists (args.target_path):
         makedirs(args.target_path)
+    if not exists(tar_img_path):
+        makedirs(tar_img_path)
+    if not exists(tar_img_res_path):
+        makedirs(tar_img_res_path)
+    if not exists(tar_img_can_path):
+        makedirs(tar_img_can_path)
+
     if not exists (args.source_path):
         print ("Error: The image path doesn't exist")
     if not args.img_name.endswith('.png'):
@@ -113,14 +156,14 @@ if __name__ == '__main__':
     src_img = cv2.imread(src_img_path) # BGR
 
     img_name_y0 = args.img_name[:-4] + '_y0' + '.png'
-    img_name_y1 = args.img_name[:-4] + '_y0' + '.png'
-    img_name_y2 = args.img_name[:-4] + '_y0' + '.png'
+    img_name_y1 = args.img_name[:-4] + '_y1' + '.png'
+    img_name_y2 = args.img_name[:-4] + '_y2' + '.png'
     first_img_path = join(args.target_path, img_name_y0)
     second_img_path = join(args.target_path, img_name_y1)
     third_img_path = join(args.target_path, img_name_y2)
 
     candidates = get_candidates()
-    diff = np.zeros((68, 9)).astype(np.float32)
+    diff = np.zeros((66, 9)).astype(np.float32)
     para_index = 0
 
     sigma_color = [0.05, 0.1, 0.2]
@@ -138,8 +181,10 @@ if __name__ == '__main__':
                     diff[cand_index, para_index] = (np.sum(np.abs(src_img - res_img)))
                     print (np.sum(np.abs(src_img - res_img)))
                     cand_index += 1
-                    figname = join(args.target_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
-                    cv2.imwrite(figname, res_img)
+                    res_figname = join(tar_img_res_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
+                    can_figname = join(tar_img_can_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
+                    cv2.imwrite(res_figname, res_img)
+                    cv2.imwrite(can_figname, can_img)
 
                     #res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=7, sigmaColor=0.1, sigmaSpace=3)
                     #cv2.imwrite(first_img_path, res_img)
@@ -149,22 +194,22 @@ if __name__ == '__main__':
 
     else:
         diff = np.load(join(args.target_path, 'diff.npy'))
-    diff[0, :]  = 1e9
-    diff[-1, :] = 1e9 # consider boundary condition
+
+    plot_4dsurface(candidates, diff, tar_img_path)
 
     # plot and score
     para_index = 0
     score = np.zeros((66, 9))
     for sc in sigma_color:
         for ss in sigma_space:
-            y = diff[1:-1, para_index]
-            x = np.arange(1, 67)
+            y = diff[:, para_index]
+            x = np.arange(0, 66)
             plt.plot(x, y)
             figname = join(args.target_path, 'diff_sc_' + str(sc) + '_ss_' + str(ss) + '.png')
             plt.savefig(figname)
             plt.close()
 
-            score[:, para_index] = local_score(diff[:, para_index])
+            score[:, para_index] = local_score(candidates, diff[:, para_index])
             para_index += 1
 
     score = np.sum(score, axis=1)
