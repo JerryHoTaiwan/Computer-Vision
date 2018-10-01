@@ -27,7 +27,7 @@ candidate image:
 guided image:
 <img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/res/0a_y0_.png" width="250">
 the cost on the surface of weight space:
-<img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/surface/sf_0.png" width="250">
+<img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/surface/sf_0.png" width="0">
 
 ## Reference
 Decolorization: Is rgb2gray() Out?[[link]](https://ybsong00.github.io/siga13tb/siga13tb_final.pdf)<br>
