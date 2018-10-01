@@ -23,9 +23,9 @@ grayscale image:
 src image:
 <img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/testdata/0a.png" width="250">
 candidate image:
-<img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/can/0a_y0.png" width="250">
+<img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/can/0a_y0_.png" width="250">
 guided image:
-<img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/res/0a_y0.png" width="250">
+<img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/res/0a_y0_.png" width="250">
 the cost on the surface of weight space:
 <img src="https://github.com/JerryHoTaiwan/Computer-Vision/blob/master/hw1/result/0a/surface/sf_0.png" width="250">
 
