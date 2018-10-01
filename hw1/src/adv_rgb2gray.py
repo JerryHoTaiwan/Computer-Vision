@@ -19,6 +19,8 @@ parser.add_argument('--target_path', default='../result')
 parser.add_argument('--img_name', default='0a.png')
 parser.add_argument('--check_ans', default=1, type=int)
 parser.add_argument('--already_done', default=0, type=int)
+parser.add_argument('--r_factor', default=1.5, type=float)
+parser.add_argument('--use_ans', default=0, type=int)
 
 def joint_bilateral_filter(jnt_img, src_img, sigma_color=0.05, sigma_space=1, r_factor=1.5):
 
@@ -41,32 +43,23 @@ def joint_bilateral_filter(jnt_img, src_img, sigma_color=0.05, sigma_space=1, r_
             y_end  = np.minimum(h, y+radius+1)
             x_init = np.maximum(0, x-radius)
             x_end  = np.minimum(w, x+radius+1)
-            #print (y_init, y_end, x_init, x_end)
-
-            src_patch_b = src_img[y_init:y_end, x_init:x_end, 0]
-            src_patch_g = src_img[y_init:y_end, x_init:x_end, 1]
-            src_patch_r = src_img[y_init:y_end, x_init:x_end, 2]
-
-            jnt_patch_b = jnt_img[y_init:y_end, x_init:x_end, 0]
-            jnt_patch_g = jnt_img[y_init:y_end, x_init:x_end, 1]
-            jnt_patch_r = jnt_img[y_init:y_end, x_init:x_end, 2]
 
             patch_y, patch_x = np.meshgrid(np.arange(y_init-y, y_end-y), np.arange(x_init-x, x_end-x))
             space_patch = (patch_y * patch_y + patch_x * patch_x).T # for some reason...
             hs = np.exp(-space_patch / (2 * (sigma_space ** 2)))
 
-            jnt_diff_b = np.multiply(jnt_patch_b - src_img[y][x][0], jnt_patch_b - src_img[y][x][0])
-            jnt_diff_g = np.multiply(jnt_patch_g - src_img[y][x][1], jnt_patch_g - src_img[y][x][1])
-            jnt_diff_r = np.multiply(jnt_patch_r - src_img[y][x][2], jnt_patch_r - src_img[y][x][2])
-            jnt_diff   = jnt_diff_b + jnt_patch_g + jnt_patch_r
+            # 1 channel only
+            src_patch = src_img[y_init:y_end, x_init:x_end]
+            #src_patch_b = src_img[y_init:y_end, x_init:x_end, 0]
+            #src_patch_g = src_img[y_init:y_end, x_init:x_end, 1]
+            #src_patch_r = src_img[y_init:y_end, x_init:x_end, 2]
+            jnt_patch = jnt_img[y_init:y_end, x_init:x_end]
+            jnt_diff  = np.multiply(jnt_patch - jnt_img[y][x], jnt_patch - jnt_img[y][x])
             hr = np.exp(-jnt_diff / (2 * (sigma_color ** 2)))
 
-            #print (hr)
-            #print (x, y, jnt_patch_b.shape, hs.shape, hr.shape, src_patch_b.shape)
-
-            response_patch_b = np.multiply(np.multiply(hs, hr), src_patch_b) / (np.sum(np.multiply(hs, hr)) + 1e-8)
-            response_patch_g = np.multiply(np.multiply(hs, hr), src_patch_g) / (np.sum(np.multiply(hs, hr)) + 1e-8)
-            response_patch_r = np.multiply(np.multiply(hs, hr), src_patch_r) / (np.sum(np.multiply(hs, hr)) + 1e-8)
+            response_patch_b = np.multiply(np.multiply(hs, hr), src_patch[:, :, 0]) / (np.sum(np.multiply(hs, hr)) + 1e-8)
+            response_patch_g = np.multiply(np.multiply(hs, hr), src_patch[:, :, 1]) / (np.sum(np.multiply(hs, hr)) + 1e-8)
+            response_patch_r = np.multiply(np.multiply(hs, hr), src_patch[:, :, 2]) / (np.sum(np.multiply(hs, hr)) + 1e-8)
 
             tar_img[y_init:y_end, x_init:x_end, 0] += response_patch_b
             tar_img[y_init:y_end, x_init:x_end, 1] += response_patch_g
@@ -92,9 +85,8 @@ def weight_rgb2gray(src_img, weights):
     img_b = src_img[:, :, 0]
     img_g = src_img[:, :, 1]
     img_r = src_img[:, :, 2]
-    tar_img = weights[0] * img_r + weights[1] * img_g + weights[2] * img_b
-    tar_img = tar_img.reshape(tar_img.shape[0], tar_img.shape[1], 1).astype(np.uint8)
-    tar_img = np.repeat(tar_img, 3, axis=2)
+    tar_img = weights[0] * img_b + weights[1] * img_g + weights[2] * img_r
+    tar_img = tar_img.reshape(tar_img.shape[0], tar_img.shape[1]).astype(np.uint8)
     return tar_img
 
 def local_score(cand, diff):
@@ -103,8 +95,6 @@ def local_score(cand, diff):
         local_min = 1
         for j, neibor in enumerate(cand):
             # the minimum distance is sqrt(2)
-            print (choice, neibor)
-            print (np.sum(np.abs(neibor - choice)))
             if np.sum(np.abs(neibor - choice)) < 0.21 and np.sum(np.abs(neibor - choice)) > 0:
                 if diff[j] > diff[i]:
                     local_min *= 1
@@ -126,8 +116,14 @@ def plot_4dsurface(candidates, diff, tar_img_path):
         y = candidates[:, 1]
         z = candidates[:, 2]
         scat = ax.scatter(x, y, z, c=c, cmap=cm.coolwarm, linewidth=0, antialiased=False)
+        ax.set_xlabel('blue')
+        ax.set_ylabel('green')
+        ax.set_zlabel('red')
+
         # Add a color bar which maps values to colors.
         fig.colorbar(scat, shrink=0.5, aspect=5)
+        ax.view_init(30, 0)
+        plt.draw()
         plt.savefig(join(scat_path, 'sf_' + str(para_index) + '.png'))
         plt.close()
 
@@ -177,23 +173,25 @@ if __name__ == '__main__':
                 for weight in candidates:
                     print (weight)
                     can_img = weight_rgb2gray(src_img, weight)
-                    res_img = joint_bilateral_filter(jnt_img=can_img, src_img=src_img, sigma_color=0.2, sigma_space=ss)
-                    diff[cand_index, para_index] = (np.sum(np.abs(src_img - res_img)))
-                    print (np.sum(np.abs(src_img - res_img)))
-                    cand_index += 1
-                    res_figname = join(tar_img_res_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
                     can_figname = join(tar_img_can_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
-                    cv2.imwrite(res_figname, res_img)
-                    cv2.imwrite(can_figname, can_img)
+                    res_figname = join(tar_img_res_path, args.img_name[:-4] + '_w0_' + str(weight[0]) + '_w1_' + str(weight[1]) + '_w2_' + str(weight[2]) + '.png')
 
-                    #res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=7, sigmaColor=0.1, sigmaSpace=3)
-                    #cv2.imwrite(first_img_path, res_img)
+                    if args.use_ans == 1:
+                        can_img = can_img.astype(np.uint8)
+                        res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=int(args.r_factor*ss), sigmaColor=sc, sigmaSpace=ss)
+                    else:
+                        res_img = joint_bilateral_filter(jnt_img=can_img, src_img=src_img, sigma_color=sc, sigma_space=ss, r_factor=args.r_factor)
+                    
+                    diff[cand_index, para_index] = (np.sum(np.abs(src_img - res_img)))
+                    cand_index += 1
+                    #cv2.imwrite(can_figname, can_img)
+                    #cv2.imwrite(res_figname, res_img)
                 para_index += 1
 
-        np.save(join(args.target_path, 'diff.npy'), diff)
+        np.save(join(tar_img_path, 'diff.npy'), diff)
 
     else:
-        diff = np.load(join(args.target_path, 'diff.npy'))
+        diff = np.load(join(tar_img_path, 'diff.npy'))
 
     plot_4dsurface(candidates, diff, tar_img_path)
 
@@ -202,17 +200,33 @@ if __name__ == '__main__':
     score = np.zeros((66, 9))
     for sc in sigma_color:
         for ss in sigma_space:
-            y = diff[:, para_index]
-            x = np.arange(0, 66)
-            plt.plot(x, y)
-            figname = join(args.target_path, 'diff_sc_' + str(sc) + '_ss_' + str(ss) + '.png')
-            plt.savefig(figname)
-            plt.close()
-
             score[:, para_index] = local_score(candidates, diff[:, para_index])
             para_index += 1
 
+    x = np.arange(0, 66)
     score = np.sum(score, axis=1)
     plt.plot(x, score)
-    plt.savefig(join(args.target_path, 'score.png'))
+    plt.savefig(join(tar_img_path, 'score.png'))
     plt.close()
+
+    # get images
+    top_score = np.sort(score)[:3]
+    for i, value in enumerate(top_score):
+        for j, number in enumerate(score):
+            if number == value:
+                score[j] == 0
+                weight = candidates[j]
+                can_img = weight_rgb2gray(src_img, weight)
+
+                if args.use_ans == 1:
+                    can_img = can_img.astype(np.uint8)
+                    res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=int(args.r_factor*ss), sigmaColor=sc, sigmaSpace=ss)
+                else:
+                    res_img = joint_bilateral_filter(jnt_img=can_img, src_img=src_img, sigma_color=sc, sigma_space=ss, r_factor=args.r_factor)
+
+                can_figname = join(tar_img_can_path, args.img_name[:-4] + '_y' + str(i) + '_.png')
+                res_figname = join(tar_img_res_path, args.img_name[:-4] + '_y' + str(i) + '_.png')
+                cv2.imwrite(can_figname, can_img)
+                cv2.imwrite(res_figname, res_img)                    
+
+                break
