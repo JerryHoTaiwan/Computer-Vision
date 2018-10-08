@@ -13,62 +13,69 @@ from os import listdir, makedirs
 from os.path import join, exists
 import time
 
+#from bennyjbf import JointBilateralFilter
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--source_path', default='../testdata')
 parser.add_argument('--target_path', default='../result')
 parser.add_argument('--img_name', default='0a.png')
 parser.add_argument('--check_ans', default=1, type=int)
 parser.add_argument('--already_done', default=0, type=int)
-parser.add_argument('--r_factor', default=1.5, type=float)
+parser.add_argument('--r_factor', default=3, type=float)
 parser.add_argument('--use_ans', default=0, type=int)
+parser.add_argument('--save_img', default=0, type=int)
 
 def joint_bilateral_filter(jnt_img, src_img, sigma_color=0.05, sigma_space=1, r_factor=1.5):
 
     start = time.time()
+
     # (390, 390, 3)
-    jnt_img = jnt_img.astype(np.float32) / 255.
-    src_img = src_img.astype(np.float32) / 255.
+    jnt_img = jnt_img.astype(np.float32)
+    src_img = src_img.astype(np.float32)
+    radius = np.round(r_factor * sigma_space).astype(np.int16)
+    sigma_color *= 255
 
-    h = src_img.shape[0]
-    w = src_img.shape[1]
-    radius = np.round(r_factor * sigma_space).astype(np.uint8)
+    jnt_pad = cv2.copyMakeBorder(jnt_img, radius, radius, radius, radius, cv2.BORDER_REFLECT).astype(np.float32)
+    jnt_pad = jnt_pad.reshape(jnt_pad.shape[0], jnt_pad.shape[1], jnt_img.shape[2]) # avoid cancelling the dimension
+    src_pad = cv2.copyMakeBorder(src_img, radius, radius, radius, radius, cv2.BORDER_REFLECT).astype(np.float32)
 
-    tar_img = np.zeros((h, w, 3)).astype(np.float32)
+    h, w = src_img.shape[0], src_img.shape[1]
+    tar_img = np.zeros((h+2*radius, w+2*radius, 3)).astype(np.float32)
 
-    for y in range(0, h):
-        for x in range(0, w):
+    patch_y, patch_x = np.meshgrid(np.arange(-radius, radius+1), np.arange(-radius, radius+1))
+    space_patch = patch_y * patch_y + patch_x * patch_x
+    hs = np.exp(-space_patch / (2 * (sigma_space ** 2)))
 
-            # define the searching range
-            y_init = np.maximum(0, y-radius)
-            y_end  = np.minimum(h, y+radius+1)
-            x_init = np.maximum(0, x-radius)
-            x_end  = np.minimum(w, x+radius+1)
+    for y in range(radius, h + radius):
+        for x in range(radius, w + radius):
 
-            patch_y, patch_x = np.meshgrid(np.arange(y_init-y, y_end-y), np.arange(x_init-x, x_end-x))
-            space_patch = (patch_y * patch_y + patch_x * patch_x).T # for some reason...
-            hs = np.exp(-space_patch / (2 * (sigma_space ** 2)))
+            src_patch = src_pad[(y-radius):(y+radius+1), (x-radius):(x+radius+1), :]
+            jnt_patch = jnt_pad[(y-radius):(y+radius+1), (x-radius):(x+radius+1), :]
 
-            # 1 channel only
-            src_patch = src_img[y_init:y_end, x_init:x_end]
-            #src_patch_b = src_img[y_init:y_end, x_init:x_end, 0]
-            #src_patch_g = src_img[y_init:y_end, x_init:x_end, 1]
-            #src_patch_r = src_img[y_init:y_end, x_init:x_end, 2]
-            jnt_patch = jnt_img[y_init:y_end, x_init:x_end]
-            jnt_diff  = np.multiply(jnt_patch - jnt_img[y][x], jnt_patch - jnt_img[y][x])
-            hr = np.exp(-jnt_diff / (2 * (sigma_color ** 2)))
+            if (jnt_patch.shape[2] == 1):
+                jnt_diff  = np.multiply(jnt_patch - jnt_pad[y][x][0], jnt_patch - jnt_pad[y][x][0])
+                hr = np.exp(-jnt_diff / (2 * (sigma_color ** 2))).reshape((2*radius+1, 2*radius+1))
 
-            response_patch_b = np.multiply(np.multiply(hs, hr), src_patch[:, :, 0]) / (np.sum(np.multiply(hs, hr)) + 1e-8)
-            response_patch_g = np.multiply(np.multiply(hs, hr), src_patch[:, :, 1]) / (np.sum(np.multiply(hs, hr)) + 1e-8)
-            response_patch_r = np.multiply(np.multiply(hs, hr), src_patch[:, :, 2]) / (np.sum(np.multiply(hs, hr)) + 1e-8)
+            elif (jnt_patch.shape[2] == 3):
 
-            tar_img[y_init:y_end, x_init:x_end, 0] += response_patch_b
-            tar_img[y_init:y_end, x_init:x_end, 1] += response_patch_g
-            tar_img[y_init:y_end, x_init:x_end, 2] += response_patch_r
+                jnt_diff = np.multiply(jnt_patch - jnt_pad[y][x], jnt_patch - jnt_pad[y][x])
+                jnt_exp_diff = np.exp(-jnt_diff / (2 * (sigma_color ** 2))).reshape((2*radius+1, 2*radius+1, 3))
+                hr = jnt_exp_diff[:, :, 0] * jnt_exp_diff[:, :, 1] * jnt_exp_diff[:, :, 2]
 
-    tar_img *= 255
+            # weighted sum
+            W = (np.sum(np.multiply(hs, hr))) + 1e-8
+            response_b = np.sum(np.multiply(np.multiply(hs, hr), src_patch[:, :, 0])) / W
+            response_g = np.sum(np.multiply(np.multiply(hs, hr), src_patch[:, :, 1])) / W
+            response_r = np.sum(np.multiply(np.multiply(hs, hr), src_patch[:, :, 2])) / W
+
+            tar_img[y, x, 0] = response_b
+            tar_img[y, x, 1] = response_g
+            tar_img[y, x, 2] = response_r
+
+    tar_img = tar_img[radius:(h+radius), radius:(w+radius)] #* 255
     interval = time.time() - start
     print ("time: ", interval)
-    return tar_img
+    return tar_img#, check
 
 def get_candidates():
     candidates = list()
@@ -86,7 +93,7 @@ def weight_rgb2gray(src_img, weights):
     img_g = src_img[:, :, 1]
     img_r = src_img[:, :, 2]
     tar_img = weights[0] * img_b + weights[1] * img_g + weights[2] * img_r
-    tar_img = tar_img.reshape(tar_img.shape[0], tar_img.shape[1]).astype(np.uint8)
+    tar_img = tar_img.reshape(tar_img.shape[0], tar_img.shape[1], 1).astype(np.int16)
     return tar_img
 
 def local_score(cand, diff):
@@ -166,9 +173,17 @@ if __name__ == '__main__':
     sigma_space = [1, 2, 3]
 
     if args.already_done == 0:
-        print (args.already_done)
         for sc in sigma_color:
             for ss in sigma_space:
+                if args.use_ans == 1:
+                    ref_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=src_img, d=2*int(args.r_factor*ss)+1, sigmaColor=sc*255, sigmaSpace=ss)
+                else:
+                    ans_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=src_img, d=2*int(args.r_factor*ss)+1, sigmaColor=sc*255, sigmaSpace=ss)
+                    ref_img = joint_bilateral_filter(jnt_img=src_img, src_img=src_img, sigma_color=sc, sigma_space=ss, r_factor=args.r_factor)
+                    #chk_img = JointBilateralFilter(ss=ss, sr=sc, guid=src_img, target=src_img)
+                    print ("difference: ", np.sum(np.abs(ref_img - ans_img)) / (ref_img.size))
+                    #print ("difference: ", np.sum(np.abs(chk_img - ans_img)) / (ref_img.size))
+
                 cand_index = 0
                 for weight in candidates:
                     print (weight)
@@ -178,14 +193,23 @@ if __name__ == '__main__':
 
                     if args.use_ans == 1:
                         can_img = can_img.astype(np.uint8)
-                        res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=int(args.r_factor*ss), sigmaColor=sc, sigmaSpace=ss)
+                        res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=2*int(args.r_factor*ss)+1, sigmaColor=sc*255, sigmaSpace=ss)
+                        ans_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=2*int(args.r_factor*ss)+1, sigmaColor=sc*255, sigmaSpace=ss)
+
                     else:
+                        #chk_img = JointBilateralFilter(ss=ss, sr=sc, guid=can_img, target=src_img)
                         res_img = joint_bilateral_filter(jnt_img=can_img, src_img=src_img, sigma_color=sc, sigma_space=ss, r_factor=args.r_factor)
-                    
-                    diff[cand_index, para_index] = (np.sum(np.abs(src_img - res_img)))
+                        can_img = can_img.astype(np.uint8)
+                        ans_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=2*int(args.r_factor*ss)+1, sigmaColor=sc*255, sigmaSpace=ss)
+                        print ("difference: ", np.sum(np.abs(res_img - ans_img)) / (ref_img.size))
+                        #print ("difference: ", np.sum(np.abs(chk_img - ans_img)) / (ref_img.size))
+
+
+                    diff[cand_index, para_index] = (np.sum(np.abs(ref_img - res_img)))
                     cand_index += 1
-                    #cv2.imwrite(can_figname, can_img)
-                    #cv2.imwrite(res_figname, res_img)
+                    if args.save_img:
+                        cv2.imwrite(can_figname, can_img)
+                        cv2.imwrite(res_figname, res_img)
                 para_index += 1
 
         np.save(join(tar_img_path, 'diff.npy'), diff)
@@ -202,7 +226,6 @@ if __name__ == '__main__':
         for ss in sigma_space:
             score[:, para_index] = local_score(candidates, diff[:, para_index])
             para_index += 1
-
     x = np.arange(0, 66)
     score = np.sum(score, axis=1)
     plt.plot(x, score)
@@ -210,17 +233,18 @@ if __name__ == '__main__':
     plt.close()
 
     # get images
-    top_score = np.sort(score)[:3]
+    top_score = np.sort(score)[-3:]
     for i, value in enumerate(top_score):
         for j, number in enumerate(score):
             if number == value:
                 score[j] == 0
                 weight = candidates[j]
+                print (weight)
                 can_img = weight_rgb2gray(src_img, weight)
 
                 if args.use_ans == 1:
                     can_img = can_img.astype(np.uint8)
-                    res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=int(args.r_factor*ss), sigmaColor=sc, sigmaSpace=ss)
+                    res_img = cv2.ximgproc.jointBilateralFilter(src=src_img, joint=can_img, d=2*int(args.r_factor*ss)+1, sigmaColor=sc*255, sigmaSpace=ss)
                 else:
                     res_img = joint_bilateral_filter(jnt_img=can_img, src_img=src_img, sigma_color=sc, sigma_space=ss, r_factor=args.r_factor)
 
