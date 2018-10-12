@@ -1,0 +1,24 @@
+votes:1.0
+BGR:[0. 1. 0.]
+votes:1.0
+BGR:[0.3 0.  0.7]
+votes:1.0
+BGR:[0.4 0.  0.6]
+votes:1.0
+BGR:[0.4 0.1 0.5]
+votes:1.0
+BGR:[0.5 0.4 0.1]
+votes:1.0
+BGR:[0.5 0.5 0. ]
+votes:1.0
+BGR:[0.6 0.3 0.1]
+votes:1.0
+BGR:[0.6 0.4 0. ]
+votes:1.0
+BGR:[0.7 0.3 0. ]
+votes:1.0
+BGR:[0.8 0.2 0. ]
+votes:2.0
+BGR:[0.1 0.9 0. ]
+votes:3.0
+BGR:[0.1 0.  0.9]
