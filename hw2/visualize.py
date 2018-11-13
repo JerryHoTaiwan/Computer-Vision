@@ -15,7 +15,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", default='./models/classifier.pkl')
-parser.add_argument("--cnn_layer", default=5, type=int)
+parser.add_argument("--cnn_layer", default=0, type=int)
 parser.add_argument("--filter_pos", default=20, type=int)
 
 def eigen2img(img):
@@ -91,7 +91,7 @@ class CNNLayerVisualization():
             self.created_image = self.processed_image.data.cpu().numpy().reshape(28, 28)
             self.created_image = eigen2img(self.created_image)
             # Save image
-            if i % 20 == 0:
+            if i % 100 == 0:
                 cv2.imwrite('../generated/layer_vis_l' + str(self.selected_layer) +
                             '_f' + str(self.selected_filter) + '_iter'+str(i)+'.jpg',
                             self.created_image)
@@ -120,6 +120,7 @@ class CNNLayerVisualization():
             # Following line selects a filter from 512 filters so self.conv_output will become
             # a tensor of shape 28x28
             self.conv_output = x[0, self.selected_filter]
+            print (self.conv_output.size())
             # Loss function is the mean of the output of the selected layer/filter
             # We try to minimize the mean of the output of that specific filter
             loss = -torch.mean(self.conv_output)
@@ -131,7 +132,7 @@ class CNNLayerVisualization():
             # Recreate image
             self.created_image = self.processed_image
             # Save image
-            if i % 5 == 0:
+            if i % 30 == 0:
                 cv2.imwrite('../generated/layer_vis_l' + str(self.selected_layer) +
                             '_f' + str(self.selected_filter) + '_iter'+str(i)+'.jpg',
                             self.created_image)

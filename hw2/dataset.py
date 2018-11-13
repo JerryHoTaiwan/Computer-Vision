@@ -10,6 +10,7 @@ class MyMnist:
         self.datapath = datapath
         self.img_data = list()
         self.label = list()
+        self.img_name = list()
         self.is_test = is_test
         self.get_data()
         self.normalize()
@@ -20,12 +21,18 @@ class MyMnist:
     def get_data(self):
 
         if self.is_test == 1:
+            sort_list = list()
             for img_path in listdir(self.datapath):
+                sort_list.append(img_path)
+            sort_list.sort()
+
+            for img_path in sort_list:
                 img_path_full = join(self.datapath, img_path)
-                img =  cv2.imread(img_path_full, cv2.IMREAD_GRAYSCALE)
+                img = cv2.imread(img_path_full, cv2.IMREAD_GRAYSCALE)
                 img = img.reshape(1, img.shape[0], img.shape[1])
                 self.img_data.append(img)
                 self.label.append(0)
+                self.img_name.append(img_path[:4])
         else:
             for class_folder in listdir(self.datapath):
                 class_label = int(class_folder[-1])
@@ -43,5 +50,6 @@ class MyMnist:
     def normalize(self):
         img_avg = np.mean(self.img_data, axis=0)
         img_std = np.std(self.img_data, axis=0) + 10e-8
-        self.img_data -= img_avg
-        self.img_data /= img_std
+        #self.img_data -= img_avg
+        #self.img_data /= img_std
+        self.img_data /= 255.

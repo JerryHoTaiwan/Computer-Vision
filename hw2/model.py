@@ -8,31 +8,21 @@ class Classifier(nn.Module):
         super(Classifier, self).__init__()
 
         self.extractor = nn.Sequential(
-            nn.Conv2d(in_channels=1,out_channels=64,kernel_size=(5,5),stride=(1,1),padding=(2,2)),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(in_channels=1,out_channels=8,kernel_size=(5,5),stride=(1,1),padding=(0,0)),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2,2)),
-            nn.Dropout(0.4),
 
-            nn.Conv2d(in_channels=64,out_channels=128,kernel_size=(3,3),stride=(1,1),padding=(1,1)),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(in_channels=8,out_channels=16,kernel_size=(5,5),stride=(1,1),padding=(0,0)),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2,2)),
-            nn.Dropout(0.4),
-
-            nn.Conv2d(in_channels=128,out_channels=256,kernel_size=(3,3),stride=(1,1),padding=(1,1)),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=(2,2)),
-            nn.Dropout(0.4),
             )
 
         self.fc = nn.Sequential(
-            nn.Linear(2304,256),
-            nn.BatchNorm1d(256),
+            nn.Linear(256,128),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(256,64),
+            nn.Linear(128,64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Linear(64,10)
@@ -47,3 +37,55 @@ class Classifier(nn.Module):
         output = self.fc(x)
     
         return output
+
+class Classifier_Vis(nn.Module):
+    def __init__(self, is_train=1):
+        super(Classifier_Vis, self).__init__()
+        self.is_train = is_train
+
+        self.conv0_0 = nn.Sequential(
+            nn.Conv2d(in_channels=1,out_channels=8,kernel_size=(5,5),stride=(1,1),padding=(0,0)),
+            )
+        self.conv0_1 = nn.Sequential(
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2,2)),
+            )
+
+        self.conv1_0 = nn.Sequential(
+            nn.Conv2d(in_channels=8,out_channels=16,kernel_size=(5,5),stride=(1,1),padding=(0,0)),
+            )
+
+        self.conv1_1 = nn.Sequential(
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2,2)),
+            )
+
+
+        self.fc = nn.Sequential(
+            nn.Linear(256,128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(128,64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Linear(64,10)
+            #nn.Softmax(1)
+            )
+
+    def forward(self,x):
+        x = x.type(torch.cuda.FloatTensor)
+
+        x0_0 = self.conv0_0(x)
+        x0_1 = self.conv0_1(x0_0)
+
+        x1_0 = self.conv1_0(x0_1)
+        x1_1 = self.conv1_1(x1_0)
+
+        x2 = x1_1.view(x1_1.size(0),-1)
+        output = self.fc(x2)
+    
+        if (self.is_train == 1):
+            return output        
+        else:
+            return x0_1, x1_1, output

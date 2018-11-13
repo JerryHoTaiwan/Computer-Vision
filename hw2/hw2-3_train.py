@@ -1,5 +1,5 @@
 from dataset import MyMnist
-from model import Classifier
+from model import Classifier, Classifier_Vis
 import numpy as np
 import sys
 import time
@@ -13,9 +13,14 @@ from torch.autograd import Variable
 import torchvision
 from torch.optim import *
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib import cm
+
 class Trainer():
 
-    def __init__(self, datapath='hw2-3_data/', model_path='models/classifier.pkl', patience=20, batchsize=128, max_epoch=100):
+    def __init__(self, datapath='hw2-3_data/', model_path='models/classifier.pkl', patience=10, batchsize=128, max_epoch=100):
         self.datapath = datapath
         self.train_data = MyMnist(join(self.datapath, 'train'))
         self.valid_data = MyMnist(join(self.datapath, 'valid'))
@@ -25,11 +30,18 @@ class Trainer():
         self.valid_x = self.valid_data.img_data
         self.valid_y = self.valid_data.label
 
+        #self.model = Classifier_Vis().cuda()
         self.model = Classifier().cuda()
+
         self.model_path = model_path
         self.batchsize = batchsize
         self.max_epoch = max_epoch
         self.patience = patience
+
+        self.train_loss_curv = list()
+        self.train_acc_curv = list()
+        self.valid_loss_curv = list()
+        self.valid_acc_curv = list()
 
     def setting(self):
 
@@ -49,6 +61,13 @@ class Trainer():
             self.eval()
             if (self.count == self.patience):
                 break
+
+        self.epoch = epoch
+
+        self.plot_curve(np.array(self.train_loss_curv), 'training_loss')
+        self.plot_curve(np.array(self.train_acc_curv), 'training_acc')
+        self.plot_curve(np.array(self.valid_loss_curv), 'valid_loss')
+        self.plot_curve(np.array(self.valid_acc_curv), 'valid_acc')
 
     def train(self, epoch):
         print("Epoch:", epoch+1)
@@ -87,6 +106,9 @@ class Trainer():
         print("Training Loss: ", running_loss/(self.total_length/self.batchsize))
         print("Training Acc: ", running_acc/(self.total_length))
 
+        self.train_loss_curv.append(running_loss/(self.total_length/self.batchsize))
+        self.train_acc_curv.append(running_acc/(self.total_length))
+
     def eval(self):
         self.model.eval()
         valid_loss = 0.0
@@ -121,8 +143,19 @@ class Trainer():
             self.count += 1
         
         print ("Validation Acc: ", valid_acc/(len(self.valid_x))) 
-
+        
+        self.valid_loss_curv.append(valid_loss/(len(self.valid_x)/self.batchsize))
+        self.valid_acc_curv.append(valid_acc/(len(self.valid_x)))
+        
         self.model.train()
+
+    def plot_curve(self, data, y_label):
+        x_epoch = np.arange(self.epoch+1)
+        plt.plot(x_epoch, data)
+        plt.xlabel('epoch')
+        plt.ylabel(y_label)
+        plt.savefig(y_label+'.png')
+        plt.close()
 
 if __name__ == '__main__':
     datapath = sys.argv[1]
